@@ -1,0 +1,20 @@
+An Emacs package that attempts to save you a few seconds when developing your R
+package in ESS. These are early days and all input is welcome.
+
+* ess-R-pkg-compile.el currently:
+** attempts to detach and re-load your R package after compilation
+** this is provided through a wrapper for the compile function that includes a post-compilation hook
+** it handles multiple R process
+** if a package could not be detached due to dependant packages those will also be detached
+** if detaching fails it will prompt you to restart the R process
+
+* Usage:
+** download ess-R-pkg-compile.el and put in your path
+** provide information to =ess-R-pkg-compile--compile= function e.g. like:
+#+BEGIN_SRC R
+  (defun build-my-package ()
+    "Build my R-package."
+    (interactive)
+    (ess-R-pkg-compile--compile "R CMD INSTALL" "~/my/path/" "my_package"))
+  (global-set-key (kbd "C-c C-m") 'build-my-package)
+#+END_SRC
