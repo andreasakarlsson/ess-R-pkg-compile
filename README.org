@@ -19,3 +19,5 @@ package in ESS. These are early days and all input is welcome.
     (ess-R-pkg-compile--compile "R CMD INSTALL" "~/my/path/" "my_package"))
   (global-set-key (kbd "C-c C-m") 'build-my-package)
 #+END_SRC
++ =(setq ess-R-pkg-compile--buffer-kill-time 5)= can be set to automatically
+  close the compilation buffer after some seconds.
