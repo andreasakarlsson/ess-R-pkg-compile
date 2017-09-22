@@ -9,7 +9,7 @@
 ;; Package-Requires: ((emacs "25")) (ess)
 ;; Last-Updated:
 ;;           By:
-;;     Update #: 420
+;;     Update #: 822
 ;; URL:
 ;; Doc URL:
 ;; Keywords:
@@ -31,14 +31,15 @@
 ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;TODO:
-;; 1. Soft detach() and then library() in existing *R* process if fail; suggest to restart R process
+;; 1. DONE: Soft detach() and then library() in existing *R* process if fail; suggest to restart R process
 ;;   a. pure find R process function (do this only ones then pass variable)
 ;;   b. provide wrapper for (compile) including post-compilation hook
 ;;   c. detach and load R package function
-;;   d. on return value or by parsing buffer suggest to restart R process
-;;   e. setting/option to restore workspace on restart of R process
-;; 2. md5-checks on header files in src folder (alist "/src/.*\\.h$" etc) if changes append "--preclean"
-;; 3. handle multiple R processes
+;;   e  detach dependencies
+;;   f. if detaching fails suggest to restart R process
+;; 2. DONE: handle multiple R processes
+;; 3  setting/option to restore workspace on restart of R process
+;; 4. md5-checks on header files in src folder (alist "/src/.*\\.h$" etc) if changes append "--preclean"
 ;; Compare and inspiration from devtools:
 ;; https://cran.r-project.org/web/packages/devtools/news.html
 ;; See the function ess-load-library in:
@@ -81,6 +82,17 @@
 ;;
 ;;; Code:
 
+(require 'ess-utils)
+(defvar ess-R-pkg-compile--buffer-kill-time
+  nil
+  "Seconds after which the buffer from a successful compilation
+  is killed. Nil will result in buffer not being killed.")
+
+;; subfunction used below
+(defun extract-R-process-buffer-name (r-process)
+  "Return name of R buffers from *R* processes."
+  (buffer-name (process-buffer
+		(get-process (car r-process)))))
 
 ;;;*;;; R Process Detection
 
@@ -139,16 +151,27 @@ R-BUFFER is the active *R* process and PKG is the package name."
     (progn (ess-eval-linewise (format "%s%s%s" "require(\"" pkg "\")"))
 	   (display-buffer R-buffer))))
 
-(defun check-if-error ()
+(defun check-if-error (r-buffer)
   "Search for error.
 Look in *R* process buffer for an error between detach and end of buffer."
   (and (string-match "Error"
-		     (with-current-buffer (find-R-process)
+		     (with-current-buffer r-buffer
 		       (progn
 			 (goto-char (point-max))
 			 (buffer-substring-no-properties
 			  (re-search-backward "> detach\\(.*\\)" nil t)
 			  (point-max))))) t))
+(defun check-dependency (r-buffer)
+  "Simple parsing of the R-BUFFER for depending packages.  Return name of dependant package if any otherwise nil."
+  (let* ((str (with-current-buffer r-buffer
+		       (progn
+			 (goto-char (point-max))
+			 (buffer-substring-no-properties
+			  (re-search-backward "> detach\\(.*\\)" nil t)
+			  (point-max))))))
+    (when (string-match "is required by ‘\\(.*\\)’ so will not be detached" str)
+      (match-string 1 str))))
+
 
 (defun restart-R-process ()
   "Find R process and offer to kill and then restart it."
@@ -161,35 +184,54 @@ Look in *R* process buffer for an error between detach and end of buffer."
 		(inferior-ess-same-window nil)
 		(ess-gen-proc-buffer-name-function (lambda (nm) R-buffer)))
 	    (R)))
-	(message "No R-process detected"))))
+      (message "No R-process detected"))))
 
-(defun delete-compilation-window-time (close-time)
-    "Time until the compilation window closes after a successful build."
-  (let ((win  (get-buffer-window buf 'visible)))
-      (when win (progn (sit-for close-time) (delete-window win)))))
+(defun delete-compilation-window (close-time)
+  "Time until the compilation window closes after a successful build."
+  (when close-time
+    (let ((win  (get-buffer-window buf 'visible)))
+      (when win (progn (sit-for close-time) (delete-window win))))))
 
-(defun run-after-compilation (buf strg)
-  "Useful things to do in BUF after compiling an R package.
+
+(defmacro post-compilation-macro (r-buffer pkg)
+  "Create a R-BUFFER and PKG specific function for the 'compilation-finish-functions' hook."
+`(defun post-compilation (buf strg)
+  "Useful things to do in the compilation BUF after compiling an R package.
   Tries to unload R package or restarts *R* before loading the R package.  It also closes the compilation buffer if sucessful."
-  (delete-compilation-window-time 1)
-  (unload-R-package (find-R-process) "microsimulation")
-  (when (check-if-error)
+  (delete-compilation-window ess-R-pkg-compile--buffer-kill-time)
+  (unload-R-package ,r-buffer ,pkg)
+  (sit-for 0.2)
+  (when (check-if-error ,r-buffer)
+    (while (check-dependency ,r-buffer)
+      (unload-R-package ,r-buffer (check-dependency ,r-buffer)))
+    (unload-R-package ,r-buffer ,pkg))
+  (when (check-if-error ,r-buffer)
     (restart-R-process))
-  (load-R-package (find-R-process) "microsimulation")
-  ;; Only want explicit use of this; hence remove each time
-  (remove-hook 'compilation-finish-functions 'run-after-compilation)
-  (print strg))
+  (sit-for 0.2)
+  (load-R-package ,r-buffer ,pkg)
+  ;; Only want explicit use of this; hence remove hook each time
+  (remove-hook 'compilation-finish-functions 'post-compilation)
+  (pop-to-buffer ,r-buffer)
+  (print strg)))
 
-;;;*;;; Package UI
 
-(defun ess-R-pkg-compile--compile (command)
+(defun ess-R-pkg-compile--compile (compile-str path pkg)
   "Wrapper of compile and a post compilation hook.
 Where COMPILE-STR is "
+  (setq ess-R-pkg-compile--current-package pkg)
+  ;; This became ugly: I rewrote the post-compilation fun as a macro to avoid
+  ;; making a global variable. However the function generated by the macro does
+  ;; not see the pkg variable. This could perhaps be solved with some cleaver
+  ;; quoting and evaluation.
+  (post-compilation-macro (find-R-process) ess-R-pkg-compile--current-package)
   ;; N.b. the hook will remove itself
-  (add-hook 'compilation-finish-functions 'run-after-compilation)
-  (compile command))
+  (add-hook 'compilation-finish-functions 'post-compilation)
 
-(provide 'ess-r-package)
+  (compile (format "%s %s"
+		   compile-str (concat (file-name-as-directory path)
+				       ess-R-pkg-compile--current-package))))
+
+(provide 'ess-R-pkg-compile)
 
  ; Local variables section
 
