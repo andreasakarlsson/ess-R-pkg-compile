@@ -11,6 +11,10 @@ package in ESS. These are early days and all input is welcome.
 
 * Usage:
 + download ess-R-pkg-compile.el and put in your path
+#+BEGIN_SRC emacs-lisp
+(add-to-list 'load-path "~/path/to/ess-R-pkg-compile/")
+(require 'ess-R-pkg-compile)
+#+END_SRC
 + provide information to =ess-R-pkg-compile--compile= function e.g. like:
 #+BEGIN_SRC R
   (defun build-my-package ()

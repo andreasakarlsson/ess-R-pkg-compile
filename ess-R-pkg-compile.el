@@ -31,15 +31,17 @@
 ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;TODO:
-;; 1. DONE: Soft detach() and then library() in existing *R* process if fail; suggest to restart R process
+;; 1 DONE: Soft detach() and then library() in existing *R* process if fail; suggest to restart R process
 ;;   a. pure find R process function (do this only ones then pass variable)
 ;;   b. provide wrapper for (compile) including post-compilation hook
 ;;   c. detach and load R package function
 ;;   e  detach dependencies
 ;;   f. if detaching fails suggest to restart R process
-;; 2. DONE: handle multiple R processes
-;; 3  setting/option to restore workspace on restart of R process
-;; 4. md5-checks on header files in src folder (alist "/src/.*\\.h$" etc) if changes append "--preclean"
+;; 2 DONE: handle multiple R processes
+;; 3 DONE: check if compilation succeeded before closing
+;; 4 keep compilation function but:  1, allow some changes in mini-buffer 1, make a wrapper inspired by old .el code to choose
+;; 5 setting/option to restore workspace on restart of R process
+;; 6 md5-checks on header files in src folder (alist "/src/.*\\.h$" etc) if changes append "--preclean"
 ;; Compare and inspiration from devtools:
 ;; https://cran.r-project.org/web/packages/devtools/news.html
 ;; See the function ess-load-library in:
@@ -84,7 +86,7 @@
 
 (require 'ess-utils)
 (defvar ess-R-pkg-compile--buffer-kill-time
-  nil
+  0
   "Seconds after which the buffer from a successful compilation
   is killed. Nil will result in buffer not being killed.")
 
@@ -185,24 +187,29 @@ Look in *R* process buffer for an error between detach and end of buffer."
 
 (defmacro post-compilation-macro (r-buffer pkg)
   "Create a R-BUFFER and PKG specific function for the 'compilation-finish-functions' hook."
-`(defun post-compilation (buf strg)
-  "Useful things to do in the compilation BUF after compiling an R package.
+  `(defun post-compilation (buf strg)
+     "Useful things to do in the compilation BUF after compiling an R package.
   Tries to unload R package or restarts *R* before loading the R package.  It also closes the compilation buffer if sucessful."
-  (delete-compilation-window ess-R-pkg-compile--buffer-kill-time)
-  (unload-R-package ,r-buffer ,pkg)
-  (sit-for 0.2)
-  (when (check-if-error ,r-buffer)
-    (while (check-dependency ,r-buffer)
-      (unload-R-package ,r-buffer (check-dependency ,r-buffer)))
-    (unload-R-package ,r-buffer ,pkg))
-  (when (check-if-error ,r-buffer)
-    (restart-R-process))
-  (sit-for 0.2)
-  (load-R-package ,r-buffer ,pkg)
-  ;; Only want explicit use of this; hence remove hook each time
-  (remove-hook 'compilation-finish-functions 'post-compilation)
-  (pop-to-buffer ,r-buffer)
-  (print strg)))
+     (if (not (string-match "exited abnormally" strg))
+	   ;; If compilation succeeded
+	   (progn
+	     (delete-compilation-window ess-R-pkg-compile--buffer-kill-time)
+	     (unload-R-package ,r-buffer ,pkg)
+	     (sit-for 0.2)
+	     (when (check-if-error ,r-buffer)
+	       (while (check-dependency ,r-buffer)
+		 (unload-R-package ,r-buffer (check-dependency ,r-buffer)))
+	       (unload-R-package ,r-buffer ,pkg))
+	     (when (check-if-error ,r-buffer)
+	       (restart-R-process))
+	     (sit-for 0.2)
+	     (load-R-package ,r-buffer ,pkg))
+	 ;; If compilation failed
+	 (message "Compilation appear to have failed, ess-R-pkg-compile is aborting."))
+       ;; Do this independent of compilation result
+       ;; Only want explicit use of this; hence remove hook each time
+       (remove-hook 'compilation-finish-functions 'post-compilation)
+       (pop-to-buffer ,r-buffer)))
 
 
 (defun ess-R-pkg-compile--compile (compile-str path pkg)
@@ -211,13 +218,10 @@ Where COMPILE-STR is the compilation command e.g. \"R CMD
 INSTALL\", PATH is the path to the folder where the package is
 located excluding the package name, PKG is the name of your
 package."
-  (setq ess-R-pkg-compile--current-package pkg)
-  ;; This became uglier then I had hoped: I rewrote the post-compilation fun as
-  ;; a macro to avoid making a global variable. However the function generated
-  ;; by the macro does not see the pkg variable. This could perhaps be solved
-  ;; with some cleaver quoting and evaluation. Otherwise I should switch back to
-  ;; the function to keep thins simple.
-  (post-compilation-macro (find-R-process) ess-R-pkg-compile--current-package)
+
+  ;; Expanding macro arguments  prior to setting up the hook.
+  (eval `(post-compilation-macro ,(find-R-process) ,pkg))
+
   ;; N.b. the hook will remove itself
   (add-hook 'compilation-finish-functions 'post-compilation)
 
