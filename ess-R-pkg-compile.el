@@ -227,7 +227,7 @@ package."
 
   (compile (format "%s %s"
 		   compile-str (concat (file-name-as-directory path)
-				       ess-R-pkg-compile--current-package))))
+				       pkg))))
 
 (provide 'ess-R-pkg-compile)
 
