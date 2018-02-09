@@ -9,7 +9,7 @@
 ;; Package-Requires: ((emacs "25")) (ess)
 ;; Last-Updated:
 ;;           By:
-;;     Update #: 822
+;;     Update #: 1063
 ;; URL:
 ;; Doc URL:
 ;; Keywords:
@@ -39,6 +39,10 @@
 ;;   f. if detaching fails suggest to restart R process
 ;; 2 DONE: handle multiple R processes
 ;; 3 DONE: check if compilation succeeded before closing
+;; + When to restart-R-process
+;; + change input to only one string parse for package name, skip default folder
+;; + As an option: always ask which R process ess-request-a-process
+;; + Universal argument C-u for manipulating compilation string (e.g. --preclean)
 ;; 4 keep compilation function but:  1, allow some changes in mini-buffer 1, make a wrapper inspired by old .el code to choose
 ;; 5 setting/option to restore workspace on restart of R process
 ;; 6 md5-checks on header files in src folder (alist "/src/.*\\.h$" etc) if changes append "--preclean"
@@ -130,39 +134,54 @@ than one let the user choose."
 
 
 (defun unload-R-package (R-buffer pkg)
-  "Detaches the R package.
+  "Unload R package namespace.
 R-BUFFER is the active *R* process and PKG is the package name."
   (with-current-buffer R-buffer
-    (progn (ess-eval-linewise (format "%s%s%s" "detach(\"package:" pkg "\", unload=TRUE)"))
-	   (display-buffer R-buffer))))
+    (progn (ess-eval-linewise
+            (format "%s%s%s%s%s" "if (isNamespaceLoaded(\"" pkg
+                    "\")) unloadNamespace(asNamespace(\"" pkg "\"))"))
+                                      (display-buffer R-buffer))))
 
 (defun load-R-package (R-buffer pkg)
   "Load the R package.
 R-BUFFER is the active *R* process and PKG is the package name."
   (with-current-buffer R-buffer
-    (progn (ess-eval-linewise (format "%s%s%s" "require(\"" pkg "\")"))
+    (progn (ess-eval-linewise (format "%s%s%s" "library(\"" pkg "\")"))
 	   (display-buffer R-buffer))))
 
 (defun check-if-error (r-buffer)
   "Search for error.
-Look in *R* process buffer for an error between detach and end of buffer."
+Look in the *R* process buffer for an error after attempting to
+unload the package from the namespace."
   (and (string-match "Error"
 		     (with-current-buffer r-buffer
 		       (progn
 			 (goto-char (point-max))
 			 (buffer-substring-no-properties
-			  (re-search-backward "> detach\\(.*\\)" nil t)
+                          (re-search-backward
+                           (concat "^> if (isNamespaceLoaded(\""
+                                   "\\([[:ascii:]]*\\)\")) "
+                                   "unloadNamespace(asNamespace(\""
+                                   "\\([[:ascii:]]*\\)\"))$") nil t)
 			  (point-max))))) t))
 (defun check-dependency (r-buffer)
-  "Simple parsing of the R-BUFFER for depending packages.  Return name of dependant package if any otherwise nil."
+  "Simple parsing of the R-BUFFER for depending packages.
+Return name of dependant package if any otherwise nil."
   (let* ((str (with-current-buffer r-buffer
-		       (progn
-			 (goto-char (point-max))
-			 (buffer-substring-no-properties
-			  (re-search-backward "> detach\\(.*\\)" nil t)
-			  (point-max))))))
-    (when (string-match "is required by ‘\\(.*\\)’ so will not be detached" str)
-      (match-string 1 str))))
+                (progn
+                  (goto-char (point-max))
+                  (buffer-substring-no-properties
+                   (re-search-backward
+                    (concat "^> if (isNamespaceLoaded(\""
+                            "\\([[:ascii:]]*\\)\")) "
+                            "unloadNamespace(asNamespace(\""
+                            "\\([[:ascii:]]*\\)\"))$") nil t)
+                   (point-max))))))
+    (when (string-match
+           (concat " package ‘\\([[:ascii:]]*\\)’ "
+                   "is required by ‘\\([[:ascii:]]*\\)’ "
+                   "so will not be detached") str)
+    (match-string 2 str))))
 
 
 (defun restart-R-process ()
@@ -198,18 +217,19 @@ Look in *R* process buffer for an error between detach and end of buffer."
 	     (sit-for 0.2)
 	     (when (check-if-error ,r-buffer)
 	       (while (check-dependency ,r-buffer)
+                 (message "Attempting to resolve dependency")
 		 (unload-R-package ,r-buffer (check-dependency ,r-buffer)))
 	       (unload-R-package ,r-buffer ,pkg))
 	     (when (check-if-error ,r-buffer)
 	       (restart-R-process))
 	     (sit-for 0.2)
-	     (load-R-package ,r-buffer ,pkg))
+	     (load-R-package ,r-buffer ,pkg)
+             (pop-to-buffer ,r-buffer))
 	 ;; If compilation failed
-	 (message "Compilation appear to have failed, ess-R-pkg-compile is aborting."))
+       (message "Compilation appear to have failed, ess-R-pkg-compile is aborting."))
        ;; Do this independent of compilation result
        ;; Only want explicit use of this; hence remove hook each time
-       (remove-hook 'compilation-finish-functions 'post-compilation)
-       (pop-to-buffer ,r-buffer)))
+       (remove-hook 'compilation-finish-functions 'post-compilation)))
 
 
 (defun ess-R-pkg-compile--compile (compile-str path pkg)
