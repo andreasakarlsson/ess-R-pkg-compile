@@ -139,15 +139,12 @@ Used by \\[ess-R-pkg-compile]."
 
 ;;;; * R Process Detection
 
-;; subfunction used below
-(defun extract-R-process-buffer-name (r-process)
-  "Return name of R buffers from *R* processes."
+(defun ess-R-pkg-compile--extract-R-process-buffer-name (r-process)
+  "Return name of R buffers from the process R-PROCESS."
   (buffer-name (process-buffer
 		(get-process (car r-process)))))
-
-;;;*;;; R Process Detection
 
-(defun find-R-process ()
+(defun ess-R-pkg-compile--find-R-process ()
   "Return *R* process."
   "First check if there is a *R* process associated with the
 buffer, otherwise check if there is a single *R* process, if there are more
@@ -155,15 +152,16 @@ than one let the user choose."
   (update-ess-process-name-list)
   ;; take the associate *R* process
   (if ess-current-process-name
-      (extract-R-process-buffer-name
+      (ess-R-pkg-compile--extract-R-process-buffer-name
        (list ess-current-process-name))
     ;; take the only available *R* process
-    (if  (= (length ess-process-name-list) 1)
-	(extract-R-process-buffer-name (car ess-process-name-list))
+    (if (= (length ess-process-name-list) 1)
+	(ess-R-pkg-compile--extract-R-process-buffer-name (car
+	ess-process-name-list))
       ;; let the user choose if more than one *R* process
       (if (>= (length ess-process-name-list) 2)
 	  (completing-read "For which R process are you building your package?: "
-			   (mapcar 'extract-R-process-buffer-name
+			   (mapcar 'ess-R-pkg-compile--extract-R-process-buffer-name
 				   ess-process-name-list))
 	;; or create a new
 	;; (let (ess-ask-for-ess-directory nil)
@@ -173,12 +171,14 @@ than one let the user choose."
 	;; 	(return "*R:pkg-compile*"))
 	(progn (ess-switch-process)
 	       (update-ess-process-name-list)
-	       (extract-R-process-buffer-name (car ess-process-name-list)))
+	       (ess-R-pkg-compile--extract-R-process-buffer-name (car
+	       ess-process-name-list)))
 	;; (and (print "No *R* process was identified.") nil)
 	)))) ;; alt. use ess-switch-process
 
 
-(defun unload-R-package (R-buffer pkg)
+
+(defun ess-R-pkg-compile--unload-R-package (R-buffer pkg)
   "Unload R package namespace.
 R-BUFFER is the active *R* process and PKG is the package name."
   (with-current-buffer R-buffer
@@ -187,19 +187,19 @@ R-BUFFER is the active *R* process and PKG is the package name."
                     "\")) unloadNamespace(asNamespace(\"" pkg "\"))"))
                                       (display-buffer R-buffer))))
 
-(defun load-R-package (R-buffer pkg)
+(defun ess-R-pkg-compile--load-R-package (R-buffer pkg)
   "Load the R package.
 R-BUFFER is the active *R* process and PKG is the package name."
   (with-current-buffer R-buffer
     (progn (ess-eval-linewise (format "%s%s%s" "library(\"" pkg "\")"))
 	   (display-buffer R-buffer))))
 
-(defun check-if-error (r-buffer)
-  "Search for error.
+(defun ess-R-pkg-compile--check-if-error (R-buffer)
+  "Parse the R-BUFFER for error message.
 Look in the *R* process buffer for an error after attempting to
 unload the package from the namespace."
   (and (string-match "Error"
-		     (with-current-buffer r-buffer
+		     (with-current-buffer R-buffer
 		       (progn
 			 (goto-char (point-max))
 			 (buffer-substring-no-properties
@@ -209,10 +209,9 @@ unload the package from the namespace."
                                    "unloadNamespace(asNamespace(\""
                                    "\\([[:ascii:]]*\\)\"))$") nil t)
 			  (point-max))))) t))
-(defun check-dependency (r-buffer)
   "Simple parsing of the R-BUFFER for depending packages.
 Return name of dependant package if any otherwise nil."
-  (let* ((str (with-current-buffer r-buffer
+  (let* ((str (with-current-buffer R-buffer
                 (progn
                   (goto-char (point-max))
                   (buffer-substring-no-properties
@@ -229,10 +228,11 @@ Return name of dependant package if any otherwise nil."
     (match-string 2 str))))
 
 
-(defun restart-R-process ()
+
+(defun ess-R-pkg-compile--restart-R-process ()
   "Find R process and offer to kill and then restart it."
   (interactive)
-  (let ((R-buffer (find-R-process)))
+  (let ((R-buffer (ess-R-pkg-compile--find-R-process)))
     (if (get-buffer-process R-buffer)
 	(when (kill-buffer R-buffer)
 	  ;;(setq ess-dialect "R")
@@ -242,34 +242,38 @@ Return name of dependant package if any otherwise nil."
 	    (R)))
       (message "No R-process detected"))))
 
-(defun delete-compilation-window (close-time)
-  "Time until the compilation window closes after a successful build."
+
+(defun ess-R-pkg-compile--delete-compilation-window (close-time)
+  "Closes the *compilation* buffer after CLOSE-TIME seconds."
   (when close-time
     (let ((win  (get-buffer-window buf 'visible)))
       (when win (progn (sit-for close-time) (delete-window win))))))
 
-
-(defmacro post-compilation-macro (r-buffer pkg)
+(defmacro ess-R-pkg-compile--post-compilation-macro (R-buffer pkg)
   "Create a R-BUFFER and PKG specific function for the 'compilation-finish-functions' hook."
   `(defun post-compilation (buf strg)
      "Useful things to do in the compilation BUF after compiling an R package.
-  Tries to unload R package or restarts *R* before loading the R package.  It also closes the compilation buffer if sucessful."
+  Tries to unload R package or restarts *R* before loading the R
+  package.  It also closes the compilation buffer if successful."
      (if (not (string-match "exited abnormally" strg))
 	   ;; If compilation succeeded
 	   (progn
-	     (delete-compilation-window ess-R-pkg-compile--buffer-kill-time)
-	     (unload-R-package ,r-buffer ,pkg)
+	     (ess-R-pkg-compile--delete-compilation-window
+	     ess-R-pkg-compile--buffer-kill-time)
+	     (ess-R-pkg-compile--unload-R-package ,R-buffer ,pkg)
 	     (sit-for 0.2)
-	     (when (check-if-error ,r-buffer)
-	       (while (check-dependency ,r-buffer)
+	     (when (ess-R-pkg-compile--check-if-error ,R-buffer)
+	       (while (ess-R-pkg-compile--check-dependency ,R-buffer)
                  (message "Attempting to resolve dependency")
-		 (unload-R-package ,r-buffer (check-dependency ,r-buffer)))
-	       (unload-R-package ,r-buffer ,pkg))
-	     (when (check-if-error ,r-buffer)
-	       (restart-R-process))
+		 (ess-R-pkg-compile--unload-R-package
+		 ,R-buffer (ess-R-pkg-compile--check-dependency
+		 ,R-buffer)))
+	       (ess-R-pkg-compile--unload-R-package ,R-buffer ,pkg))
+	     (when (ess-R-pkg-compile--check-if-error ,R-buffer)
+	       (ess-R-pkg-compile--restart-R-process))
 	     (sit-for 0.2)
-	     (load-R-package ,r-buffer ,pkg)
-             (pop-to-buffer ,r-buffer))
+	     (ess-R-pkg-compile--load-R-package ,R-buffer ,pkg)
+             (pop-to-buffer ,R-buffer))
 	 ;; If compilation failed
        (message "Compilation appear to have failed, ess-R-pkg-compile is aborting."))
        ;; Do this independent of compilation result
@@ -277,40 +281,79 @@ Return name of dependant package if any otherwise nil."
        (remove-hook 'compilation-finish-functions 'post-compilation)))
 
 
-(defun ess-R-pkg-compile--compile (compile-str path pkg)
+(defun ess-R-pkg-compile--compile (pkg &optional parent-path compile-str)
   "Wrapper of compile and a post compilation hook.
 Where COMPILE-STR is the compilation command e.g. \"R CMD
-INSTALL\", PATH is the path to the folder where the package is
+INSTALL\", PARENT-PATH is the path to the folder where the package is
 located excluding the package name, PKG is the name of your
 package."
-
+  (let ((parent-path (or parent-path ess-R-pkg-compile--default-R-pkg-parent-path))
+        (compile-str (or compile-str ess-R-pkg-compile--default-compile-str)))
   ;; Expanding macro arguments  prior to setting up the hook.
-  (eval `(post-compilation-macro ,(find-R-process) ,pkg))
+  (eval `(ess-R-pkg-compile--post-compilation-macro
+  ,(ess-R-pkg-compile--find-R-process) ,pkg))
 
   ;; N.b. the hook will remove itself
   (add-hook 'compilation-finish-functions 'post-compilation)
 
   (compile (format "%s %s"
-		   compile-str (concat (file-name-as-directory path)
-				       pkg))))
+		   compile-str (concat (file-name-as-directory parent-path)
+				       pkg)))))
+
+
+
+;;;; * Package UI
+
+(defun ess-R-pkg-compile--prefix-build-flag ()
+  "This function check if the 'universal-argument' was invoked.
+If so the user can enter a string with additional build flags."
+  (cond
+   ((equal current-prefix-arg nil) (list "")); no C-u -> no additional flag
+   (t (list (read-string "Additional build flags:" )))))
+
+(defmacro ess-R-pkg-compile--macro (pkg &optional parent-path compile-str)
+  "Macro that generate a function which builds an R package.
+Creates and names the interactive function
+ESS-R-PKG-COMPILE--MY-PACKAGE for building and reloading
+R-packages.  The first required argument PKG, should be a string
+with the name of the package, which must be the same as the
+package folder.  The optional string PARENT-PATH should be the
+folder wherein the R package folder is located, will default to
+ESS-R-PKG-COMPILE--DEFAULT-R-PKG-PARENT-PATH.  To use a package
+specific build call COMPILE-STR can be set, which otherwise
+defaults ESS-R-PKG-COMPILE--DEFAULT-COMPILE-STR."
+  `(defun ,(intern (format "ess-R-pkg-compile--%s" pkg)) (&optional build-flag)
+     "Package specific function for interactively rebuilding and
+reloading your R-package.  \\<universal-argument> &
+\\[ESS-R-PKG-COMPILE--MY-PACKAGE] will prompt for entering
+additional BUILD-FLAG string."
+     (interactive (ess-R-pkg-compile--prefix-build-flag))
+     (let ((parent-path
+            (or ,parent-path ess-R-pkg-compile--default-R-pkg-parent-path))
+           (compile-str
+            (or ,compile-str ess-R-pkg-compile--default-compile-str)))
+       (ess-R-pkg-compile--compile ,pkg parent-path
+                                   (format "%s %s" compile-str build-flag)))))
+
+(defun ess-R-pkg-compile--select-build (&optional build-flag)
+  "Allow the user to interactively pick an R package build call.
+Each element must be generated by ESS-R-PKG-COMPILE--MACRO and
+added to ESS-R-PKG-COMPILE--BUILD-LIST.  \\<universal-argument> &
+\\[ESS-R-PKG-COMPILE--SELECT-BUILD] will prompt for entering
+additional BUILD-FLAG string."
+  (interactive (ess-R-pkg-compile--prefix-build-flag))
+  (funcall (car (car (read-from-string
+                      (format "(%s)"
+                              (completing-read
+                               "Select package:" ess-R-pkg-compile--build-list)))))
+           build-flag))
 
 (provide 'ess-R-pkg-compile)
 
- ; Local variables section
-
-;;; This file is automatically placed in Outline minor mode.
-;;; The file is structured as follows:
-;;; Chapters:     ^L ;
-;;; Sections:    ;;*;;
-;;; Subsections: ;;;*;;;
-;;; Components:  defuns, defvars, defconsts
-;;;              Random code beginning with a ;;;;* comment
-
-;;; Local variables:
-;;; mode: emacs-lisp
-;;; outline-minor-mode: nil
-;;; mode: outline-minor
-;;; outline-regexp: "\^L\\|\\`;\\|;;\\*\\|;;;\\*\\|(def[cvu]\\|(setq\\|;;;;\\*"
+;;; Local Variables:
+;;; lexical-binding: t
+;;; outline-regexp: ";;;; "
+;;; eval:(progn (outline-minor-mode 1) (while (re-search-forward "^;;;; \\* " nil t) (outline-toggle-children)))
 ;;; End:
 
 ;;; ess-R-pkg-compile.el ends here
