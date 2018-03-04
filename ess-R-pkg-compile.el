@@ -209,6 +209,7 @@ unload the package from the namespace."
                                    "unloadNamespace(asNamespace(\""
                                    "\\([[:ascii:]]*\\)\"))$") nil t)
 			  (point-max))))) t))
+(defun ess-R-pkg-compile--check-dependency (R-buffer)
   "Simple parsing of the R-BUFFER for depending packages.
 Return name of dependant package if any otherwise nil."
   (let* ((str (with-current-buffer R-buffer
@@ -342,10 +343,9 @@ added to ESS-R-PKG-COMPILE--BUILD-LIST.  \\<universal-argument> &
 \\[ESS-R-PKG-COMPILE--SELECT-BUILD] will prompt for entering
 additional BUILD-FLAG string."
   (interactive (ess-R-pkg-compile--prefix-build-flag))
-  (funcall (car (car (read-from-string
-                      (format "(%s)"
-                              (completing-read
-                               "Select package:" ess-R-pkg-compile--build-list)))))
+  (funcall (car (read-from-string
+                      (completing-read
+                               "Select package:" ess-R-pkg-compile--build-list)))
            build-flag))
 
 (provide 'ess-R-pkg-compile)
