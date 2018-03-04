@@ -1,37 +1,84 @@
 * ess-R-pkg-compile.el
 An Emacs package that attempts to save you a few seconds when developing your R
-package in ESS. These are early days and all input is welcome.
+package in ESS. It provides functionality for rebuilding your R package and on a
+successful build unload and then reload your R package within the right R process.
 
-* Current functionality:
-+ attempts to detach and re-load your R package after compilation
-+ this is provided through a wrapper of the compile function that includes a post-compilation hook
-+ it handles multiple R process
-+ if a package could not be detached due to dependant packages those will also be detached
-+ if detaching fails it will prompt you to restart the R process
+Other features include recursively unloading dependant packages, interactive
+selection from several of your packages, some do-what-I-mean functionality for
+choosing among R processes, individual build commands per package and invoking additional
+build flags with a universal argument.
 
-* Usage:
-+ download ess-R-pkg-compile.el and put in your path
+
+
+* Installing
+Download ess-R-pkg-compile.el and put in your path.
 #+BEGIN_SRC emacs-lisp
 (add-to-list 'load-path "~/path/to/ess-R-pkg-compile/")
 (require 'ess-R-pkg-compile)
 #+END_SRC
-+ provide information to =ess-R-pkg-compile--compile= function e.g. like:
-#+BEGIN_SRC emacs-lisp
-  (setq ess-R-pkg-compile--default-R-pkg-parent-path "~/path/to/myRpackages")
 
-  (ess-R-pkg-compile--macro "my-package")
-  ;; this is now interactively available through
-  (ess-R-pkg-compile--my-package) ;; n.b. the optional universal argument for build flags
-#+END_SRC
-+ Should you have multiple packages you could also use:
+* Minimal setup
+This is useful for a single R package. Swap =my-package= for your package name
+and =~/path/to/myRpackages= for the _parent folder_ of your R package.
 #+BEGIN_SRC emacs-lisp
-  (ess-R-pkg-compile--macro "my-second-package")
-  (add-to-list 'ess-R-pkg-compile--build-list 'my-package)
-  (add-to-list 'ess-R-pkg-compile--build-list 'my-second-package)
+  (ess-R-pkg-compile--macro "my-package" "~/path/to/myRpackages") ;; this will generate an interactive fuction subfixed with your package name
+  (global-set-key (kbd "C-c C-m") 'ess-R-pkg-compile--my-package) ;; select a suitable keybing to quickly call your new rebuild & reload function
+#+END_SRC
+N.b. you can use the universal argument ~C-u C-c C-m~  to add more build flags
+e.g. =--preclean=.
+
+* Multiple R packages
+Create one build-reload function per package as described below. If they share a
+parent folder you can set a default (see the first row below).
+#+BEGIN_SRC emacs-lisp
+  (setq ess-R-pkg-compile--default-R-pkg-parent-path "~/path/to/myRpackages") ;; set a default parent path if you have your packages at one place
+  (ess-R-pkg-compile--macro "my-package")                                     ;; this will generate the function "ess-R-pkg-compile--my-package"
+  (ess-R-pkg-compile--macro "my-second-package")                              ;; this will generate the function "ess-R-pkg-compile--my-second-package"
 #+END_SRC
 
-+ Now call the interactive function below and re-build the package you want. If
-  want you can use the universal argument for more build flags.
+Now you can either 1) call these functions interactively,
+e.g. ~M-x ess-R-pkg-compile--my-package~, 2) define a key-binding per package or
+3) use the =ess-R-pkg-compile--select-build= function as described below.
+
 #+BEGIN_SRC emacs-lisp
-  (ess-R-pkg-compile--select-build)
+  (add-to-list 'ess-R-pkg-compile--build-list 'my-package)          ;; add first package to build list
+  (add-to-list 'ess-R-pkg-compile--build-list 'my-second-package)   ;; add second package to build list
+  (global-set-key (kbd "C-c C-m") 'ess-R-pkg-compile--select-build) ;; select a suitable keybing to quickly select which package to rebuild & reload
 #+END_SRC
+
+You can now use =ess-R-pkg-compile--select-build= to interactively choose which
+  of your R packagea to rebuild and reload. If want you can use the universal
+  argument to add more build flags e.g. =C-u M-x ess-R-pkg-compile--select-build=.
+
+* More configuration
+** Variables
++ =ess-R-pkg-compile--default-R-pkg-parent-path= String containing the default path to the parent directory of
+  the R packages as we saw in the example above.
++ =ess-R-pkg-compile--default-compile-str= String containing the default build
+  command default is ="R CMD INSTALL"=.
++ =ess-R-pkg-compile--assume-R-process= Attempt to assume the intended R-process
+  for the compilation. Either by the process associated with the current buffer, or if
+only one process exist. If set to nil the user will always be
+prompted to select R process. Default is t.
++ =ess-R-pkg-compile--buffer-kill-time= Define seconds after which to kill the
+  buffer after a successful compilation. Nil will result in buffer not being
+  killed. Default is 0.
+** Other functions
++ =ess-R-pkg-compile--restart-R-process= Find R process and offer to kill and
+  then restart it.
+
+* How does this work?
+This works through a wrapper of the compile function that includes a
+post-compilation hook. The function evaluated after a successful compilation
+attempts to unload your package in the correct R process and parses potential error messages for
+depending packages.
+
+* Can't you do this with =devtools=?
+Yes, you could quit possibly get part of this work-flow using
+  =devtools::install(pkg = "my-package", reload = TRUE)= together with yasnippet or by
+  extending =ess-r-devtools=.
+
+* TODO
+ + Get some feedback.
+ + Go over documentation.
+ + Put package on MELPA
