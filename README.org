@@ -8,8 +8,6 @@ selection from several of your packages, some do-what-I-mean functionality for
 choosing among R processes, individual build commands per package and invoking additional
 build flags with a universal argument.
 
-
-
 * Installing
 Download ess-R-pkg-compile.el and put in your path.
 #+BEGIN_SRC emacs-lisp
@@ -19,7 +17,8 @@ Download ess-R-pkg-compile.el and put in your path.
 
 * Minimal setup
 This is useful for a single R package. Swap =my-package= for your package name
-and =~/path/to/myRpackages= for the _parent folder_ of your R package.
+(both places) and =~/path/to/myRpackages= for the *parent* folder of your R
+package.
 #+BEGIN_SRC emacs-lisp
   (ess-R-pkg-compile--macro "my-package" "~/path/to/myRpackages") ;; this will generate an interactive fuction subfixed with your package name
   (global-set-key (kbd "C-c C-m") 'ess-R-pkg-compile--my-package) ;; select a suitable keybing to quickly call your new rebuild & reload function
@@ -31,14 +30,14 @@ e.g. =--preclean=.
 Create one build-reload function per package as described below. If they share a
 parent folder you can set a default (see the first row below).
 #+BEGIN_SRC emacs-lisp
-  (setq ess-R-pkg-compile--default-R-pkg-parent-path "~/path/to/myRpackages") ;; set a default parent path if you have your packages at one place
+  (setq ess-R-pkg-compile--default-R-pkg-parent-path "~/path/to/myRpackages") ;; set a default parent path if you have your packages at one place, otherwise use the second argument in (ess-R-pkg-compile--macro)
   (ess-R-pkg-compile--macro "my-package")                                     ;; this will generate the function "ess-R-pkg-compile--my-package"
   (ess-R-pkg-compile--macro "my-second-package")                              ;; this will generate the function "ess-R-pkg-compile--my-second-package"
 #+END_SRC
 
 Now you can either 1) call these functions interactively,
-e.g. ~M-x ess-R-pkg-compile--my-package~, 2) define a key-binding per package or
-3) use the =ess-R-pkg-compile--select-build= function as described below.
+e.g. ~M-x ess-R-pkg-compile--my-package~, 2) define a key-binding per package
+or 3) use the =ess-R-pkg-compile--select-build= function as described below.
 
 #+BEGIN_SRC emacs-lisp
   (add-to-list 'ess-R-pkg-compile--build-list 'my-package)          ;; add first package to build list
@@ -47,22 +46,23 @@ e.g. ~M-x ess-R-pkg-compile--my-package~, 2) define a key-binding per package o
 #+END_SRC
 
 You can now use =ess-R-pkg-compile--select-build= to interactively choose which
-  of your R packagea to rebuild and reload. If want you can use the universal
+  of your R package to rebuild and reload. If want you can use the universal
   argument to add more build flags e.g. =C-u M-x ess-R-pkg-compile--select-build=.
 
 * More configuration
 ** Variables
-+ =ess-R-pkg-compile--default-R-pkg-parent-path= String containing the default path to the parent directory of
-  the R packages as we saw in the example above.
++ =ess-R-pkg-compile--default-R-pkg-parent-path= String containing the default
+  path to the parent directory of the R packages, as we saw in the example
+  above.
 + =ess-R-pkg-compile--default-compile-str= String containing the default build
-  command default is ="R CMD INSTALL"=.
+  command this is preset to =R CMD INSTALL=.
 + =ess-R-pkg-compile--assume-R-process= Attempt to assume the intended R-process
-  for the compilation. Either by the process associated with the current buffer, or if
-only one process exist. If set to nil the user will always be
-prompted to select R process. Default is t.
+  for the compilation. Either by the process associated with the current buffer,
+  or if only one process exist. If set to nil the user will always be prompted
+  to select R process. Default is =t=.
 + =ess-R-pkg-compile--buffer-kill-time= Define seconds after which to kill the
   buffer after a successful compilation. Nil will result in buffer not being
-  killed. Default is 0.
+  killed. Default is =0=.
 ** Other functions
 + =ess-R-pkg-compile--restart-R-process= Find R process and offer to kill and
   then restart it.
@@ -70,15 +70,13 @@ prompted to select R process. Default is t.
 * How does this work?
 This works through a wrapper of the compile function that includes a
 post-compilation hook. The function evaluated after a successful compilation
-attempts to unload your package in the correct R process and parses potential error messages for
-depending packages.
+attempts to unload your package in the correct R process and parses potential
+error messages for depending packages.
 
 * Can't you do this with =devtools=?
-Yes, you could quit possibly get part of this work-flow using
-  =devtools::install(pkg = "my-package", reload = TRUE)= together with yasnippet or by
-  extending =ess-r-devtools=.
+Yes, you could quite possibly get part of this work-flow using
+  =devtools::install(pkg = "my-package", reload = TRUE)= together with yasnippet
+  or by extending =ess-r-devtools=.
 
-* TODO
- + Get some feedback.
- + Go over documentation.
- + Put package on MELPA
+* Contribute
+Thoughts and pull requests are welcome!
