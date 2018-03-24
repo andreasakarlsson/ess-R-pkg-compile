@@ -1,19 +1,19 @@
-;;; ess-R-pkg-compile.el ---
+;;; ess-R-pkg-compile.el --- builds R packages and reloads within R process
 ;;
 ;; Filename: ess-R-pkg-compile.el
-;; Description: Facilitates compilation of R packages from Emacs.
+;; Description: Facilitates compilation of R packages
 ;; Author: Andreas Karlsson
 ;; Maintainer: Andreas Karlsson
 ;; Created: fre jul 14 12:16:42 2017 (+0200)
 ;; Version: 0.1
-;; Package-Requires: ((emacs "25")) (ess)
+;; Package-Requires: ((emacs "25") (ess "17"))
 ;; Last-Updated:
 ;;           By:
-;;     Update #: 1063
-;; URL:
+;;     Update #: 1498
+;; URL: https://github.com/andreasakarlsson/ess-R-pkg-compile
 ;; Doc URL:
-;; Keywords:
-;; Compatibility:
+;; Keywords: tools, processes, ESS, R-package, compilation
+;; Compatibility: Tested on R version 3.4.4
 ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
@@ -92,8 +92,7 @@
 ;;;; * Defining variables
 
 (defcustom ess-R-pkg-compile--default-R-pkg-parent-path nil
-  "String containing the default path to the parent directory of
-  the R packages.
+  "String containing the default path to the parent directory of the R packages.
 
 Used by \\[ess-R-pkg-compile]."
   :group 'ess-S
@@ -244,8 +243,8 @@ Return name of dependant package if any otherwise nil."
       (message "No R-process detected"))))
 
 
-(defun ess-R-pkg-compile--delete-compilation-window (close-time)
-  "Closes the *compilation* buffer after CLOSE-TIME seconds."
+(defun ess-R-pkg-compile--delete-compilation-window (buf close-time)
+  "Closes the *compilation* buffer BUF after CLOSE-TIME seconds."
   (when close-time
     (let ((win  (get-buffer-window buf 'visible)))
       (when win (progn (sit-for close-time) (delete-window win))))))
@@ -259,7 +258,7 @@ Return name of dependant package if any otherwise nil."
      (if (not (string-match "exited abnormally" strg))
 	   ;; If compilation succeeded
 	   (progn
-	     (ess-R-pkg-compile--delete-compilation-window
+	     (ess-R-pkg-compile--delete-compilation-window buf
 	     ess-R-pkg-compile--buffer-kill-time)
 	     (ess-R-pkg-compile--unload-R-package ,R-buffer ,pkg)
 	     (sit-for 0.2)
@@ -284,10 +283,10 @@ Return name of dependant package if any otherwise nil."
 
 (defun ess-R-pkg-compile--compile (pkg &optional parent-path compile-str)
   "Wrapper of compile and a post compilation hook.
-Where COMPILE-STR is the compilation command e.g. \"R CMD
-INSTALL\", PARENT-PATH is the path to the folder where the package is
-located excluding the package name, PKG is the name of your
-package."
+Where PKG is the name of your package, PARENT-PATH is the path to
+the folder where the package is located excluding the package
+name and COMPILE-STR is the compilation command e.g. \"R CMD
+INSTALL\", ."
   (let ((parent-path (or parent-path ess-R-pkg-compile--default-R-pkg-parent-path))
         (compile-str (or compile-str ess-R-pkg-compile--default-compile-str)))
   ;; Expanding macro arguments  prior to setting up the hook.
@@ -351,7 +350,6 @@ additional BUILD-FLAG string."
 (provide 'ess-R-pkg-compile)
 
 ;;; Local Variables:
-;;; lexical-binding: t
 ;;; outline-regexp: ";;;; "
 ;;; eval:(progn (outline-minor-mode 1) (while (re-search-forward "^;;;; \\* " nil t) (outline-toggle-children)))
 ;;; End:
